@@ -80,42 +80,6 @@ describe CalendarHelper, "#calendar" do
   end
   
   it "should render valid xhtml" do
-        puts base_calendar
     base_calendar.should be_valid_xhtml_fragment
   end
-
 end
-
-
-=begin
-"a\nb\nc\nd".lines.map { |n| "---#{n}" }.join "\n"
-date += 1 until ([2,3,4,5].include?(date.wday) && date != Date.today)
-require File.expand_path(File.dirname(__FILE__) + "/../lib/calendar_helper")
-class CalendarHelperTest < Test::Unit::TestCase
-  
-  def test_with_output
-    output = []
-    %w(calendar_with_defaults calendar_for_this_month calendar_with_next_and_previous).each do |methodname|
-      output << "<h2>#{methodname}</h2>\n" + send(methodname.to_sym) + "\n\n"
-    end
-    write_sample "sample.html", output
-  end
- 
-  # HACK Tried to use assert_select, but it's not made for free-standing
-  # HTML parsing.
-  def test_should_have_two_tr_tags_in_the_thead
-    # TODO Use a validating service to make sure the rendered HTML is valid
-    html = calendar_with_defaults
-    assert_match %r{<thead>.*</thead>}, html
-  end
- 
-  def write_sample(filename, content)
-    FileUtils.mkdir_p "test/output"
-    File.open("test/output/#{filename}", 'w') do |f|
-      f.write %(<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html><head><title>Stylesheet Tester</title><link href="../../generators/calendar_styles/templates/grey/style.css" media="screen" rel="Stylesheet" type="text/css" /></head><body>)
-      f.write content
-      f.write %(</body></html>)
-    end
-  end
- 
-=end

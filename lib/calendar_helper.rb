@@ -88,7 +88,10 @@ module CalendarHelper
         :show_today => true,
         :previous_month_text => nil,
         :next_month_text => nil,
-        :month_header => true
+        :month_header => true,
+        :weekend_class => 'weekend',
+        :today_class => 'today',
+        :output => {}
       }
       @options = defaults.merge options
       @block = block

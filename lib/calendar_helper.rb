@@ -1,4 +1,5 @@
 require 'date'
+require 'nokogiri'
 
 # CalendarHelper allows you to draw a databound calendar with fine-grained CSS formatting
 module CalendarHelper
@@ -66,127 +67,180 @@ module CalendarHelper
   # For consistency with the themes provided in the calendar_styles generator, use "specialDay" as the CSS class for marked days.
   # 
   def calendar(options = {}, &block)
-    raise(ArgumentError, "No year given")  unless options.has_key?(:year)
-    raise(ArgumentError, "No month given") unless options.has_key?(:month)
-
-    block                        ||= Proc.new {|d| nil}
-
-    defaults = {
-      :table_class => 'calendar',
-      :month_name_class => 'monthName',
-      :other_month_class => 'otherMonth',
-      :day_name_class => 'dayName',
-      :day_class => 'day',
-      :abbrev => (0..2),
-      :first_day_of_week => 0,
-      :accessible => false,
-      :show_today => true,
-      :previous_month_text => nil,
-      :next_month_text => nil,
-      :month_header => true
-    }
-    options = defaults.merge options
-
-    first = Date.civil(options[:year], options[:month], 1)
-    last = Date.civil(options[:year], options[:month], -1)
-
-    first_weekday = first_day_of_week(options[:first_day_of_week])
-    last_weekday = last_day_of_week(options[:first_day_of_week])
-    
-    day_names = Date::DAYNAMES.dup
-    first_weekday.times do
-      day_names.push(day_names.shift)
-    end
-
-    # TODO Use some kind of builder instead of straight HTML
-    cal = %(<table class="#{options[:table_class]}" border="0" cellspacing="0" cellpadding="0">)
-    cal << %(<thead>)
-    
-    if (options[:month_header])
-      cal << %(<tr>)
-      if options[:previous_month_text] or options[:next_month_text]
-        cal << %(<th colspan="2">#{options[:previous_month_text]}</th>)
-        colspan=3
-      else
-        colspan=7
-      end
-      cal << %(<th colspan="#{colspan}" class="#{options[:month_name_class]}">#{Date::MONTHNAMES[options[:month]]}</th>)
-      cal << %(<th colspan="2">#{options[:next_month_text]}</th>) if options[:next_month_text]
-      cal << %(</tr>)
-    end
-    
-    cal << %(<tr class="#{options[:day_name_class]}">)
-    
-    day_names.each do |d|
-      unless d[options[:abbrev]].eql? d
-        cal << "<th scope='col'><abbr title='#{d}'>#{d[options[:abbrev]]}</abbr></th>"
-      else
-        cal << "<th scope='col'>#{d[options[:abbrev]]}</th>"
-      end
-    end
-    cal << "</tr></thead><tbody><tr>"
-    beginning_of_week(first, first_weekday).upto(first - 1) do |d|
-      cal << %(<td class="#{options[:other_month_class]})
-      cal << " weekendDay" if weekend?(d)
-      if options[:accessible]
-        cal << %(">#{d.day}<span class="hidden"> #{Date::MONTHNAMES[d.month]}</span></td>)
-      else
-        cal << %(">#{d.day}</td>)
-      end
-    end unless first.wday == first_weekday
-    first.upto(last) do |cur|
-      cell_text, cell_attrs = block.call(cur)
-      cell_text  ||= cur.mday
-      cell_attrs ||= {}
-      cell_attrs[:class] ||= options[:day_class]
-      cell_attrs[:class] += " weekendDay" if [0, 6].include?(cur.wday)
-      today = (Time.respond_to?(:zone) && !(zone = Time.zone).nil? ? zone.now.to_date : Date.today)
-      cell_attrs[:class] += " today" if (cur == today) and options[:show_today]
-      cell_attrs = cell_attrs.map {|k, v| %(#{k}="#{v}") }.join(" ")
-      cal << "<td #{cell_attrs}>#{cell_text}</td>"
-      cal << "</tr><tr>" if cur.wday == last_weekday
-    end
-    (last + 1).upto(beginning_of_week(last + 7, first_weekday) - 1)  do |d|
-      cal << %(<td class="#{options[:other_month_class]})
-      cal << " weekendDay" if weekend?(d)
-      if options[:accessible]
-        cal << %(">#{d.day}<span class='hidden'> #{Date::MONTHNAMES[d.mon]}</span></td>)
-      else
-        cal << %(">#{d.day}</td>)        
-      end
-    end unless last.wday == last_weekday
-    cal << "</tr></tbody></table>"
+    Calendar.new(options, &block).to_html
   end
-  
-  private
-  
-  def first_day_of_week(day)
-    day
+
+  #  extract HTML Calendar generator into its own class
+  class Calendar
+    def initialize(options = {}, &block)
+      raise(ArgumentError, "No year given") unless options.has_key?(:year)
+      raise(ArgumentError, "No month given") unless options.has_key?(:month)
+      
+      defaults = {
+        :table_class => 'calendar',
+        :month_name_class => 'monthName',
+        :other_month_class => 'otherMonth',
+        :day_name_class => 'dayName',
+        :day_class => 'day',
+        :abbrev => (0..2),
+        :first_day_of_week => 0,
+        :accessible => false,
+        :show_today => true,
+        :previous_month_text => nil,
+        :next_month_text => nil,
+        :month_header => true
+      }
+      @options = defaults.merge options
+      @block = block
+      rails_timezone = Time.respond_to?(:zone) && Time.zone
+      @today = rails_timezone ? rails_timezone.now.to_date : Date.today
+    end
+    
+    def to_html
+      builder.doc.xpath('//table').to_xhtml @options[:output]
+    end
+    
+    private
+    def builder
+      Nokogiri::HTML::Builder.new do |doc|
+        @doc = doc
+        render_calendar
+      end
+    end
+    
+    def render_calendar
+      @doc.table(:border => 0, :cellpadding => 0, :cellspacing => 0, :class => @options[:table_class]) {
+        render_header
+        render_body
+      }
+    end
+    
+    def render_header
+      @doc.thead {
+        render_month_names
+        render_day_names
+      }
+    end
+
+    def render_month_names
+      @colspan = 7
+      @doc.tr {
+        render_month_navigation @options[:previous_month_text]
+        render_month_name
+        render_month_navigation @options[:next_month_text]
+      }
+    end
+    
+    def render_month_navigation navigation_text
+      return if navigation_text.nil?
+      @colspan -= 2
+      @doc.td(:colspan => 2) {
+        @doc.text navigation_text
+      }
+    end
+    
+    def render_month_name
+      @doc.td(:class => @options[:month_name_class], :colspan => @colspan) {
+        @doc.text Date::MONTHNAMES[@options[:month]]
+      }
+    end
+    
+    def render_day_names
+      @doc.tr(:class => @options[:day_name_class]) {
+        day_names.each do |day_name|
+          render_day_name day_name
+        end
+      }
+    end
+    
+    def render_day_name day_name
+      abbreviated_day_name = day_name[@options[:abbrev]]
+
+      @doc.th(:scope => 'col') {
+        unless day_name.eql? abbreviated_day_name
+          @doc.abbr(:title => day_name) {
+            @doc.text abbreviated_day_name
+          }
+        else
+          @doc.text day_name
+        end
+      }
+    end
+    
+    def day_names
+      (0..6).map { |i| Date::DAYNAMES[(i + @options[:first_day_of_week]) % 7] }
+    end
+    
+    def render_body
+      @doc.tbody {
+        (calendar_start_date..calendar_end_date).each_slice(7) do |week|
+          render_week week
+        end
+      }
+    end
+    
+    def render_week week
+      @doc.tr {
+        week.each do |day|
+          render_day day
+        end
+      }
+    end
+    
+    def render_day day
+      text, attrs = day_attrs day
+      month = day.month
+      
+      @doc.td(attrs) {
+        @doc.text text
+        @doc.span(:class => 'hidden') {
+          @doc.text Date::MONTHNAMES[month]
+        } if @options[:accessible] && month != @options[:month]
+      }
+    end
+    
+    def calendar_start_date
+      Date.civil(@options[:year], @options[:month], 1).start_of_week(@options[:first_day_of_week])
+    end
+    
+    def calendar_end_date
+      Date.civil(@options[:year], @options[:month], -1).end_of_week(@options[:first_day_of_week])
+    end
+    
+    def day_attrs day
+      text, attrs = @block.call(day) unless @block.nil?
+      text ||= day.mday
+      attrs ||= {}
+      
+      attrs.merge!( :class => [
+          (attrs[:class] || @options[:day_class]),
+          (@options[:other_month_class] unless day.month == @options[:month]),
+          ("weekendDay" if day.weekend?),
+          ("today" if (day == @today) && @options[:show_today])
+        ].compact.join(' '))
+      
+      [text, attrs]
+    end
   end
-  
-  def last_day_of_week(day)
-    if day > 0
-      day - 1
+end
+
+# add some calendar-related methods to Date class
+class Date
+  def start_of_week start_wday = 0
+    curr_wday = self.wday
+    self - curr_wday + start_wday - 
+    if start_wday > curr_wday
+      7
     else
-      6
+      0
     end
   end
   
-  def days_between(first, second)
-    if first > second
-      second + (7 - first)
-    else
-      second - first
-    end
+  def end_of_week start_wday = 0
+    self.start_of_week(start_wday) + 6
   end
   
-  def beginning_of_week(date, start = 1)
-    days_to_beg = days_between(start, date.wday)
-    date - days_to_beg
+  def weekend?
+    [0, 6].include? self.wday
   end
-  
-  def weekend?(date)
-    [0, 6].include?(date.wday)
-  end
-  
 end

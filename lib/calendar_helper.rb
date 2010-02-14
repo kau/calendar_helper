@@ -66,6 +66,10 @@ module CalendarHelper
   #
   # For consistency with the themes provided in the calendar_styles generator, use "specialDay" as the CSS class for marked days.
   # 
+  # :output in options hash is passed to Nokogiri's to_xhtml method.  This can be used to change encoding of indentation of the output HTML
+  # for example, :output => { :indent => 2 } }.  Defaults to {}, meaning the Nokogiri defaults are used.
+  # see documentation on Nokogiri::XML::Node.to_xhtml at http://nokogiri.rubyforge.org/nokogiri/Nokogiri/XML/Node.html
+  #
   def calendar(options = {}, &block)
     Calendar.new(options, &block).to_html
   end

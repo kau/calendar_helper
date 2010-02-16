@@ -1,5 +1,6 @@
 require 'date'
 require 'nokogiri'
+require 'enumerator' if RUBY_VERSION < '1.9'
 
 # CalendarHelper allows you to draw a databound calendar with fine-grained CSS formatting
 module CalendarHelper
@@ -70,7 +71,25 @@ module CalendarHelper
   # for example, :output => { :indent => 2 } }.  Defaults to {}, meaning the Nokogiri defaults are used.
   # see documentation on Nokogiri::XML::Node.to_xhtml at http://nokogiri.rubyforge.org/nokogiri/Nokogiri/XML/Node.html
   #
-  def calendar(options = {}, &block)
+  # If create an instance of the Calendar class directly, i.e.
+  # options  = { :year=>2010, :month=>2 }
+  # calendar = CalendarHelper::Calendar.new(options).build
+  #
+  # Then you get an instance of Nokogiri::HTML::Builder which you can then manipulate further using Nokigiri, for example:
+  # add a footer to your calendar with
+  # builder = Nokogiri::HTML::Builder.new do |doc|
+  #   doc.tfoot {
+  #     doc.tr {
+  #       doc.td(:colspan => 7) {
+  #         doc.text 'happy footer'
+  #       }
+  #     }
+  #   }
+  # end
+  # footer = Nokogiri::XML::Node.new(builder.doc.inner_html, calendar.doc)
+  # calendar.doc.at_css('tbody').add_previous_sibling footer
+  #
+  def self.calendar(options = {}, &block)
     Calendar.new(options, &block).to_html
   end
 
@@ -104,17 +123,17 @@ module CalendarHelper
     end
     
     def to_html
-      builder.doc.xpath('//table').to_xhtml @options[:output]
+      build.doc.xpath('//table').to_xhtml @options[:output]
     end
     
-    private
-    def builder
+    def build
       Nokogiri::HTML::Builder.new do |doc|
         @doc = doc
         render_calendar
       end
     end
     
+    private
     def render_calendar
       @doc.table(:border => 0, :cellpadding => 0, :cellspacing => 0, :class => @options[:table_class]) {
         render_header
